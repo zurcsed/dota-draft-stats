@@ -1,0 +1,37 @@
+name: Update hero stats
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"  # every 6 hours
+  workflow_dispatch:  # "Run workflow" button for a manual run
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build stats.json from STRATZ
+        env:
+          STRATZ_TOKEN: ${{ secrets.STRATZ_TOKEN }}
+        run: python build_feed.py site/stats.json
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
