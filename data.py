@@ -20,7 +20,7 @@ CACHE_TTL = 7 * 24 * 3600  # OpenDota matchup stats move slowly, a week is fine
 CACHE_FORMAT = 4  # 4: weeks include the running one; older caches are downloaded again
 RUNNING_WEEK_TTL = 6 * 3600  # the running week keeps filling up
 # the shared feed (GitHub Pages); DRAFT_HELPER_FEED overrides it (e.g. a file:// URL for tests)
-FEED_URL = ""
+FEED_URL = "https://zurcsed.github.io/dota-draft-stats/stats.json"  # feed-repo/ on GitHub
 FEED_TTL = 2 * 3600  # the feed is rebuilt every 6 hours; checking every 2 is cheap (one ~350 KB file)
 REQUEST_PAUSE = 1.1  # free tier allows 60 requests per minute
 
