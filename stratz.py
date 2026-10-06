@@ -17,6 +17,11 @@ Needs a free personal token: stratz.com/api -> log in with Steam -> copy the tok
 The token is only read from the environment (or the user's environment in the registry,
 so a fresh `setx` works without logging out). It is never printed or stored in the project.
 
+Lane partners (`laneOutcome` with isWith: true, one request per position 1/3/4/5): games of a hero on
+that position with each hero that stood in the same lane of the same team, and how many of those
+matches it won. Without positionIds the API mixes all positions under "POSITION_1" (checked
+2026-10-06: Crystal Maiden "POSITION_1" had 286 000 games), so every position is asked separately.
+
 `python stratz.py` checks the token and prints a couple of numbers.
 """
 import json
@@ -38,6 +43,7 @@ WEEKS = 4  # complete weeks, plus the running week (INCLUDE_RUNNING_WEEK)
 INCLUDE_RUNNING_WEEK = True
 REQUEST_PAUSE = 0.3
 POSITIONS = {"POSITION_1": 1, "POSITION_2": 2, "POSITION_3": 3, "POSITION_4": 4, "POSITION_5": 5}
+LANE_POSITIONS = (1, 3, 4, 5)  # mid has no lane partner
 
 WEEK = 7 * 86400
 KNOWN_WEEK_START = 1788998400  # 2026-09-10 00:00 UTC, a STRATZ week start (Thursday)
@@ -54,11 +60,22 @@ def _positions_query(weeks):
     return "{ heroStats { " + " ".join(parts) + " } }"
 
 
+def _matchup_parts(hero, weeks):
+    return [f"w{i}: matchUp(heroId: {hero}, week: {w}, take: 200{_bracket()}) {{ heroId "
+            f"vs {{ heroId2 matchCount winCount }} with {{ heroId2 matchCount winCount }} }}"
+            for i, w in enumerate(weeks)]
+
+
 def _matchup_query(hero, weeks):
-    parts = [f"w{i}: matchUp(heroId: {hero}, week: {w}, take: 200{_bracket()}) {{ heroId "
-             f"vs {{ heroId2 matchCount winCount }} with {{ heroId2 matchCount winCount }} }}"
-             for i, w in enumerate(weeks)]
-    return "{ heroStats { " + " ".join(parts) + " } }"
+    return "{ heroStats { " + " ".join(_matchup_parts(hero, weeks)) + " } }"
+
+
+def _hero_query(hero, weeks):
+    """Matchups (w<week>) and lane partners (p<position>_<week>) of one hero in one request."""
+    lanes = [f"p{p}_{i}: laneOutcome(heroId: {hero}, isWith: true, week: {w}, positionIds: [POSITION_{p}]"
+             f"{_bracket()}) {{ heroId2 matchCount matchWinCount }}"
+             for p in LANE_POSITIONS for i, w in enumerate(weeks)]
+    return "{ heroStats { " + " ".join(_matchup_parts(hero, weeks) + lanes) + " } }"
 
 
 def last_complete_week(now=None):
@@ -130,7 +147,8 @@ def fetch(hero_ids, progress=None):
 
     Returns {"week": newest complete week start, "weeks": [...], "bracket": BRACKET,
              "base": {hero: [games, wins]}, "positions": {hero: {pos: [games, wins]}},
-             "matchups": {hero: {enemy: [games, wins]}}, "synergy": {hero: {ally: [games, wins]}}}
+             "matchups": {hero: {enemy: [games, wins]}}, "synergy": {hero: {ally: [games, wins]}},
+             "lanes": {hero: {position: {lane partner: [games, match wins]}}}}
     where wins are always the first hero's wins."""
     if not token():
         raise StratzError(f"нет ключа {TOKEN_ENV}")
@@ -148,10 +166,14 @@ def fetch(hero_ids, progress=None):
             position = POSITIONS.get(row["position"])
             if position:
                 _add(positions, hero, position, row["matchCount"], row["winCount"])
-    matchups, synergy = {}, {}
+    matchups, synergy, lanes = {}, {}, {}
     for n, hero in enumerate(hero_ids, 1):
         time.sleep(REQUEST_PAUSE)
-        for entries in _query(_matchup_query(hero, weeks))["heroStats"].values():
+        for key, entries in _query(_hero_query(hero, weeks))["heroStats"].items():
+            if key.startswith("p"):  # p<position>_<week>: lane partners
+                for r in entries or []:
+                    _add(lanes.setdefault(hero, {}), int(key[1]), r["heroId2"], r["matchCount"], r["matchWinCount"])
+                continue
             for entry in entries or []:
                 for r in entry["vs"]:
                     _add(matchups, hero, r["heroId2"], r["matchCount"], r["winCount"])
@@ -160,7 +182,7 @@ def fetch(hero_ids, progress=None):
         if progress:
             progress(n, len(hero_ids))
     return {"week": last_complete_week(), "weeks": weeks, "bracket": BRACKET, "base": base, "positions": positions,
-            "matchups": matchups, "synergy": synergy}
+            "matchups": matchups, "synergy": synergy, "lanes": lanes}
 
 
 if __name__ == "__main__":
