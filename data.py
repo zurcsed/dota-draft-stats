@@ -72,6 +72,8 @@ class HeroData:
         self.synergy = _int_keys(raw.get("synergy", {}))
         self.positions = _int_keys(raw.get("positions", {}))
         self.lanes = {int(h): _int_keys(by_position) for h, by_position in raw.get("lanes", {}).items()}
+        # each hero's offset from the table winrate to the STRATZ site's (stratz.py), for the plain list
+        self.site_offsets = {int(h): v for h, v in raw.get("site_offsets", {}).items()}
         for h in self.heroes.values():
             h["base_wr"] = h["pub_win"] / h["pub_pick"] if h["pub_pick"] else 0.5
 
@@ -93,6 +95,7 @@ class HeroData:
             return bool(stratz.token()) or time.time() - self.downloaded_at > FEED_TTL
         if self.source == "stratz":
             return (self.format != CACHE_FORMAT or self.bracket != stratz.BRACKET or not self.lanes
+                    or not self.site_offsets
                     or self.weeks != stratz.weeks_to_use(self.week) or not self.week
                     or self.week < stratz.last_complete_week()
                     or (stratz.INCLUDE_RUNNING_WEEK and time.time() - self.fetched_at > RUNNING_WEEK_TTL))
@@ -185,7 +188,7 @@ def collect(progress=None):
                 heroes[hero_id]["pub_pick"], heroes[hero_id]["pub_win"] = games, wins
         raw.update(source="stratz", week=numbers["week"], weeks=numbers["weeks"], bracket=numbers["bracket"],
                    matchups=numbers["matchups"], synergy=numbers["synergy"], positions=numbers["positions"],
-                   lanes=numbers["lanes"])
+                   lanes=numbers["lanes"], site_offsets=numbers["site_offsets"], site_weeks=numbers["site_weeks"])
     if raw["source"] == "opendota":
         raw["matchups"] = _fetch_opendota_matchups(heroes, progress)
     return raw
