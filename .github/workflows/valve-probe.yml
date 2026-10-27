@@ -2,6 +2,7 @@ name: Valve API probe
 
 # A test branch only: does the Dota API collect matches from GitHub's servers, and how fast?
 # The result (numbers only, never the key) is committed to probe-result.txt on this branch.
+# Run 2: the home collector was stopped, so the key is used by this job alone.
 on:
   push:
     branches: [valve-probe]
