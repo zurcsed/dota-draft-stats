@@ -1,0 +1,50 @@
+name: Valve API probe
+
+# A test branch only: does Steam's Dota API answer from GitHub's servers, and how fast?
+on:
+  push:
+    branches: [valve-probe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Valve answers a made-up key with HTTP 403 (the server is reachable)
+        run: |
+          python3 - <<'PY'
+          import time, urllib.request, urllib.error
+          url = ("https://api.steampowered.com/IDOTA2Match_570/GetMatchHistoryBySequenceNum/v1/"
+                 "?key=00000000000000000000000000000000&start_at_match_seq_num=1&matches_requested=1")
+          started = time.time()
+          try:
+              urllib.request.urlopen(url, timeout=30)
+              code = 200
+          except urllib.error.HTTPError as e:
+              code = e.code
+          print("HTTP", code, "in", round(time.time() - started, 2), "s")
+          raise SystemExit(0 if code == 403 else 1)
+          PY
+      - name: Ten requests in a row all answer within 2 seconds each
+        run: |
+          python3 - <<'PY'
+          import time, urllib.request, urllib.error
+          url = ("https://api.steampowered.com/IDOTA2Match_570/GetMatchHistoryBySequenceNum/v1/"
+                 "?key=00000000000000000000000000000000&start_at_match_seq_num=1&matches_requested=1")
+          slowest, codes = 0, set()
+          for _ in range(10):
+              started = time.time()
+              try:
+                  urllib.request.urlopen(url, timeout=30)
+                  codes.add(200)
+              except urllib.error.HTTPError as e:
+                  codes.add(e.code)
+              slowest = max(slowest, time.time() - started)
+              time.sleep(1)
+          print("codes", codes, "slowest", round(slowest, 2), "s")
+          raise SystemExit(0 if codes == {403} and slowest < 2 else 1)
+          PY
