@@ -1,0 +1,5 @@
+key present: True (length 32)
+GetMatchHistory: 200 in 0.26 s
+requests: 53, codes: {'200': 42, '429': 11}
+latency: median 0.48 s, 95th 1.07 s, slowest 1.49 s
+matches: 4199 in 244 s = 61981 per hour (all pick with 10 humans: 2497)
