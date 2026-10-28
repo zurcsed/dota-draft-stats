@@ -33,7 +33,7 @@ PAUSE = 1.0  # seconds between requests; a key may make 100 000 a day
 BATCH = 100  # the most GetMatchHistoryBySequenceNum returns at once
 WAIT_AT_HEAD = 15  # no new matches yet: we have caught up with the games just finished
 RETRY_PAUSES = (5, 15, 30, 60, 120)  # Valve's Dota API answers 429 / 5xx now and then
-RETRY_CODES = (429, 500, 502, 503, 504)
+RETRY_CODES = (404, 429, 500, 502, 503, 504)  # Valve answered 404 for a valid address once, during an outage (2026-10-28)
 OUTAGE_WAIT = 300  # still no answer after the retries: the API is down (it happens for hours), wait it out
 # a dropped connection or a cut-off body while reading the answer is raised outside URLError
 NETWORK_ERRORS = (urllib.error.URLError, OSError, http.client.HTTPException, ValueError)
