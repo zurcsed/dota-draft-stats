@@ -22,12 +22,10 @@ that position with each hero that stood in the same lane of the same team, and h
 matches it won. Without positionIds the API mixes all positions under "POSITION_1" (checked
 2026-10-06: Crystal Maiden "POSITION_1" had 286 000 games), so every position is asked separately.
 
-Hero winrates as the STRATZ site shows them (heroes -> meta -> trends: all modes, all ranks) come
-from `winWeek`, which the API serves 3-4 weeks late. So for every hero we measure how far its
-matchup-table winrate is from the site's series on the latest SITE_WEEKS weeks the series has, and
-the plain winrate list adds that offset to the current table winrate (checked 2026-10-06 on 56
-heroes: 1.07 points off the site with the hero stats, 0.78 with the tables, 0.26 with the offset;
-Meepo +3.9 -> -0.6, Arc Warden +2.9 -> -0.5: the tables count their clones).
+Plain hero winrates are the table winrates as they are. Until 2026-10-28 they were moved to the
+STRATZ site's series (`winWeek`: all modes, so Turbo games raised e.g. Vengeful Spirit from 52.6% to
+54.0% while Dotabuff shows 52% in All Pick); the user wants ranked All Pick only, so the offsets are
+gone and `site_offsets` is only kept as zeros for the cache format 4 that old exes read.
 
 `python stratz.py` checks the token and prints a couple of numbers.
 """
@@ -51,10 +49,6 @@ INCLUDE_RUNNING_WEEK = True
 REQUEST_PAUSE = 0.3
 POSITIONS = {"POSITION_1": 1, "POSITION_2": 2, "POSITION_3": 3, "POSITION_4": 4, "POSITION_5": 5}
 LANE_POSITIONS = (1, 3, 4, 5)  # mid has no lane partner
-# weeks of the site's own series (winWeek) to measure each hero's offset on; on the user's screenshots
-# of the site (56 heroes, 2026-10-06) the latest week alone fit best: 0.26 points off on average, 1 week
-# 0.26 / 2 weeks 0.31 / 3-4 weeks 0.33 (older weeks are further from the month shown)
-SITE_WEEKS = 1
 
 WEEK = 7 * 86400
 KNOWN_WEEK_START = 1788998400  # 2026-09-10 00:00 UTC, a STRATZ week start (Thursday)
@@ -81,24 +75,12 @@ def _matchup_query(hero, weeks):
     return "{ heroStats { " + " ".join(_matchup_parts(hero, weeks)) + " } }"
 
 
-def _hero_query(hero, weeks, site_weeks=()):
-    """Matchups (w<week>), lane partners (p<position>_<week>) and the matchup totals of the site's
-    weeks (s<week>) of one hero in one request."""
+def _hero_query(hero, weeks):
+    """Matchups (w<week>) and lane partners (p<position>_<week>) of one hero in one request."""
     lanes = [f"p{p}_{i}: laneOutcome(heroId: {hero}, isWith: true, week: {w}, positionIds: [POSITION_{p}]"
              f"{_bracket()}) {{ heroId2 matchCount matchWinCount }}"
              for p in LANE_POSITIONS for i, w in enumerate(weeks)]
-    site = [f"s{i}: matchUp(heroId: {hero}, week: {w}, take: 200{_bracket()}) {{ vs {{ matchCount winCount }} }}"
-            for i, w in enumerate(site_weeks)]
-    return "{ heroStats { " + " ".join(_matchup_parts(hero, weeks) + lanes + site) + " } }"
-
-
-def _site_series():
-    """(weeks, {hero: [games, wins]}) of the site's own series over its latest SITE_WEEKS weeks."""
-    rows = _query("{ heroStats { winWeek(take: %d) { week heroId matchCount winCount } } }" % SITE_WEEKS)
-    totals = {}
-    for r in rows["heroStats"]["winWeek"] or []:
-        _add(totals, r["heroId"], "all", r["matchCount"], r["winCount"])
-    return sorted({r["week"] for r in rows["heroStats"]["winWeek"] or []}), {h: t["all"] for h, t in totals.items()}
+    return "{ heroStats { " + " ".join(_matchup_parts(hero, weeks) + lanes) + " } }"
 
 
 def last_complete_week(now=None):
@@ -172,7 +154,7 @@ def fetch(hero_ids, progress=None):
              "base": {hero: [games, wins]}, "positions": {hero: {pos: [games, wins]}},
              "matchups": {hero: {enemy: [games, wins]}}, "synergy": {hero: {ally: [games, wins]}},
              "lanes": {hero: {position: {lane partner: [games, match wins]}}},
-             "site_offsets": {hero: site winrate - matchup-table winrate on the site's latest weeks}}
+             "site_offsets": {hero: 0.0}}  # kept for the cache format, see the module docstring
     where wins are always the first hero's wins."""
     if not token():
         raise StratzError(f"нет ключа {TOKEN_ENV}")
@@ -190,32 +172,23 @@ def fetch(hero_ids, progress=None):
             position = POSITIONS.get(row["position"])
             if position:
                 _add(positions, hero, position, row["matchCount"], row["winCount"])
-    site_weeks, site = _site_series()
-    matchups, synergy, lanes, site_tables, offsets = {}, {}, {}, {}, {}
+    matchups, synergy, lanes = {}, {}, {}
     for n, hero in enumerate(hero_ids, 1):
         time.sleep(REQUEST_PAUSE)
-        for key, entries in _query(_hero_query(hero, weeks, site_weeks))["heroStats"].items():
+        for key, entries in _query(_hero_query(hero, weeks))["heroStats"].items():
             if key.startswith("p"):  # p<position>_<week>: lane partners
                 for r in entries or []:
                     _add(lanes.setdefault(hero, {}), int(key[1]), r["heroId2"], r["matchCount"], r["matchWinCount"])
-                continue
-            if key.startswith("s"):  # s<week>: the matchup totals of the site's weeks
-                for entry in entries or []:
-                    for r in entry["vs"]:
-                        _add(site_tables, hero, "all", r["matchCount"], r["winCount"])
                 continue
             for entry in entries or []:
                 for r in entry["vs"]:
                     _add(matchups, hero, r["heroId2"], r["matchCount"], r["winCount"])
                 for r in entry["with"]:
                     _add(synergy, hero, r["heroId2"], r["matchCount"], r["winCount"])
-        table, series = site_tables.get(hero, {}).get("all"), site.get(hero)
-        if table and series and table[0] and series[0]:
-            offsets[hero] = series[1] / series[0] - table[1] / table[0]
         if progress:
             progress(n, len(hero_ids))
     return {"week": last_complete_week(), "weeks": weeks, "bracket": BRACKET, "base": base, "positions": positions,
-            "matchups": matchups, "synergy": synergy, "lanes": lanes, "site_offsets": offsets, "site_weeks": site_weeks}
+            "matchups": matchups, "synergy": synergy, "lanes": lanes, "site_offsets": {h: 0.0 for h in hero_ids}, "site_weeks": []}
 
 
 if __name__ == "__main__":

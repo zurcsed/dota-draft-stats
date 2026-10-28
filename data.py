@@ -81,7 +81,7 @@ class HeroData:
         self.synergy = _int_keys(raw.get("synergy", {}))
         self.positions = _int_keys(raw.get("positions", {}))
         self.lanes = {int(h): _int_keys(by_position) for h, by_position in raw.get("lanes", {}).items()}
-        # each hero's offset from the table winrate to the STRATZ site's (stratz.py), for the plain list
+        # zeros since 2026-10-28 (stratz.py); old exes read the field, and an empty one asks for a download
         self.site_offsets = {int(h): v for h, v in raw.get("site_offsets", {}).items()}
         for h in self.heroes.values():
             h["base_wr"] = h["pub_win"] / h["pub_pick"] if h["pub_pick"] else 0.5
@@ -181,8 +181,8 @@ def current_valve():
 
 def apply_valve(raw, valve):
     """Winrates and counters from our own Valve numbers instead of STRATZ's (they match Dotabuff better).
-    Positions and lane partners stay as they were. The site offsets only moved STRATZ's tables to its
-    site's numbers, so they become zeros (not empty: that would ask for a new download every time)."""
+    Positions and lane partners stay as they were. The site offsets stay zeros (not empty: that
+    would ask for a new download every time)."""
     heroes = raw["heroes"]
     keys = {int(k): k for k in heroes}
     base = {int(h): cell for h, cell in valve["base"].items() if int(h) in keys}
