@@ -7,6 +7,7 @@ Wants=network-online.target
 User=collector
 WorkingDirectory=/opt/dota-collector
 EnvironmentFile=/etc/dota-collector.env
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 /opt/dota-collector/valve_collect.py
 Restart=always
 RestartSec=30
