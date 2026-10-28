@@ -5,6 +5,7 @@
 - OpenDota as the last resort (small sample, see CLAUDE.md).
 On top of STRATZ's numbers our own Valve statistics (valve_export.py) replace the winrates and counters
 when a fresh valve_stats.json exists; positions and lane partners stay with STRATZ."""
+import http.client
 import json
 import os
 import re
@@ -31,6 +32,7 @@ REQUEST_PAUSE = 1.1  # free tier allows 60 requests per minute
 VALVE_FILE = paths.CACHE / "valve_stats.json"  # written by valve_export.py
 VALVE_MAX_AGE = 3 * 24 * 3600  # the newest match in it may be this old, else STRATZ's numbers stay
 VALVE_MIN_MATCHES = 500_000  # a smaller sample is worse than STRATZ's
+VALVE_URL = "http://62.109.7.63:8080/valve_stats.json"  # our server (server/setup.sh); VALVE_STATS_URL overrides it
 
 
 def _get(path, retries=3):
@@ -152,13 +154,29 @@ def load_valve(path=None):
 
 
 def download_valve(url):
-    """The same file from a URL (the feed builder gets it from our own server), or None."""
+    """The same file from a URL (our own server), or None."""
     request = urllib.request.Request(url, headers={"User-Agent": "dota-draft-helper", "Cache-Control": "no-cache"})
     try:
         with urllib.request.urlopen(request, timeout=60) as resp:
             return _usable_valve(json.load(resp))
-    except (OSError, ValueError):  # no answer, or not JSON
+    except (OSError, ValueError, http.client.HTTPException):  # no answer, a cut-off answer, or not JSON
         return None
+
+
+def current_valve():
+    """The Valve numbers to use: the server's file (kept in the cache for the next time), else the file
+    already in the cache if it is still usable, else None (STRATZ's numbers stay)."""
+    stats = download_valve(os.environ.get("VALVE_STATS_URL") or VALVE_URL)
+    if stats:
+        try:
+            VALVE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = VALVE_FILE.with_suffix(".tmp")
+            tmp.write_text(json.dumps(stats, separators=(",", ":")), encoding="utf-8")
+            tmp.replace(VALVE_FILE)
+        except OSError:
+            pass  # the numbers are still used this time
+        return stats
+    return load_valve()
 
 
 def apply_valve(raw, valve):
@@ -248,7 +266,7 @@ def collect(progress=None):
         raw.update(source="stratz", week=numbers["week"], weeks=numbers["weeks"], bracket=numbers["bracket"],
                    matchups=numbers["matchups"], synergy=numbers["synergy"], positions=numbers["positions"],
                    lanes=numbers["lanes"], site_offsets=numbers["site_offsets"], site_weeks=numbers["site_weeks"])
-        valve = load_valve()
+        valve = current_valve()
         if valve:
             apply_valve(raw, valve)
     if raw["source"] == "opendota":
