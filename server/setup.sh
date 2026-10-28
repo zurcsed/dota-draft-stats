@@ -16,6 +16,7 @@ apt-get install -y python3 git
 
 id collector >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin collector
 if [ -d "$APP/.git" ]; then
+    chown -R collector:collector "$APP"
     runuser -u collector -- git -C "$APP" pull --ff-only
 else
     git clone "$REPO" "$APP"
