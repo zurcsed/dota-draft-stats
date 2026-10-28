@@ -2,7 +2,9 @@
 - STRATZ with your own token (STRATZ_TOKEN) - the developer's PC and the feed builder;
 - the shared feed (FEED_URL): one JSON file built from STRATZ every 6 hours by GitHub Actions
   (build_feed.py), so friends need no token and no setup;
-- OpenDota as the last resort (small sample, see CLAUDE.md)."""
+- OpenDota as the last resort (small sample, see CLAUDE.md).
+On top of STRATZ's numbers our own Valve statistics (valve_export.py) replace the winrates and counters
+when a fresh valve_stats.json exists; positions and lane partners stay with STRATZ."""
 import json
 import os
 import re
@@ -10,6 +12,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import paths
 import stratz
@@ -25,6 +28,9 @@ RUNNING_WEEK_TTL = 6 * 3600  # the running week keeps filling up
 FEED_URL = "https://zurcsed.github.io/dota-draft-stats/stats.json"  # feed-repo/ on GitHub
 FEED_TTL = 2 * 3600  # the feed is rebuilt every 6 hours; checking every 2 is cheap (one ~350 KB file)
 REQUEST_PAUSE = 1.1  # free tier allows 60 requests per minute
+VALVE_FILE = paths.CACHE / "valve_stats.json"  # written by valve_export.py
+VALVE_MAX_AGE = 3 * 24 * 3600  # the newest match in it may be this old, else STRATZ's numbers stay
+VALVE_MIN_MATCHES = 500_000  # a smaller sample is worse than STRATZ's
 
 
 def _get(path, retries=3):
@@ -64,6 +70,7 @@ class HeroData:
         self.week = raw.get("week")  # STRATZ: start of the newest week the numbers are from
         self.weeks = raw.get("weeks") or ([self.week] if self.week else [])
         self.bracket = raw.get("bracket")
+        self.valve = raw.get("valve")  # period of our own Valve numbers, if they replaced STRATZ's
         self.format = raw.get("format", 1)
         self.via_feed = bool(raw.get("downloaded_at"))
         self.downloaded_at = raw.get("downloaded_at", self.fetched_at)
@@ -95,7 +102,7 @@ class HeroData:
             return bool(stratz.token()) or time.time() - self.downloaded_at > FEED_TTL
         if self.source == "stratz":
             return (self.format != CACHE_FORMAT or self.bracket != stratz.BRACKET or not self.lanes
-                    or not self.site_offsets
+                    or not self.site_offsets or valve_file_changed(self.fetched_at)
                     or self.weeks != stratz.weeks_to_use(self.week) or not self.week
                     or self.week < stratz.last_complete_week()
                     or (stratz.INCLUDE_RUNNING_WEEK and time.time() - self.fetched_at > RUNNING_WEEK_TTL))
@@ -115,6 +122,58 @@ class HeroData:
                 if test(_norm(hero["name"])):
                     return hero_id
         return None
+
+
+def valve_file_changed(since):
+    """A Valve statistics file written after `since` (the numbers should be made again)."""
+    try:
+        return VALVE_FILE.stat().st_mtime > since
+    except OSError:
+        return False
+
+
+def _usable_valve(stats):
+    """The statistics if they are big, complete and fresh enough, else None."""
+    try:
+        if (stats["matches"] < VALVE_MIN_MATCHES or len(stats["base"]) < 100 or not stats["matchups"]
+                or time.time() - stats["to"] > VALVE_MAX_AGE):
+            return None
+    except (KeyError, TypeError):
+        return None
+    return stats
+
+
+def load_valve(path=None):
+    """Our own Valve statistics (valve_export.py), or None if missing, too small or too old."""
+    try:
+        return _usable_valve(json.loads(Path(path or VALVE_FILE).read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return None
+
+
+def download_valve(url):
+    """The same file from a URL (the feed builder gets it from our own server), or None."""
+    request = urllib.request.Request(url, headers={"User-Agent": "dota-draft-helper", "Cache-Control": "no-cache"})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as resp:
+            return _usable_valve(json.load(resp))
+    except (OSError, ValueError):  # no answer, or not JSON
+        return None
+
+
+def apply_valve(raw, valve):
+    """Winrates and counters from our own Valve numbers instead of STRATZ's (they match Dotabuff better).
+    Positions and lane partners stay as they were. The site offsets only moved STRATZ's tables to its
+    site's numbers, so they become zeros (not empty: that would ask for a new download every time)."""
+    heroes = raw["heroes"]
+    keys = {int(k): k for k in heroes}
+    base = {int(h): cell for h, cell in valve["base"].items() if int(h) in keys}
+    for hero_id, (games, wins) in base.items():
+        heroes[keys[hero_id]]["pub_pick"], heroes[keys[hero_id]]["pub_win"] = games, wins
+    raw["matchups"] = {int(h): {int(o): cell for o, cell in row.items()}
+                       for h, row in valve["matchups"].items() if int(h) in keys}
+    raw["site_offsets"] = {h: 0.0 for h in base}
+    raw["valve"] = {k: valve[k] for k in ("matches", "from", "to", "days", "built_at")}
 
 
 def load_cache():
@@ -189,6 +248,9 @@ def collect(progress=None):
         raw.update(source="stratz", week=numbers["week"], weeks=numbers["weeks"], bracket=numbers["bracket"],
                    matchups=numbers["matchups"], synergy=numbers["synergy"], positions=numbers["positions"],
                    lanes=numbers["lanes"], site_offsets=numbers["site_offsets"], site_weeks=numbers["site_weeks"])
+        valve = load_valve()
+        if valve:
+            apply_valve(raw, valve)
     if raw["source"] == "opendota":
         raw["matchups"] = _fetch_opendota_matchups(heroes, progress)
     return raw

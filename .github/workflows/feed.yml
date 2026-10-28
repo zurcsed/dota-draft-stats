@@ -30,6 +30,7 @@ jobs:
       - name: Build stats.json from STRATZ
         env:
           STRATZ_TOKEN: ${{ secrets.STRATZ_TOKEN }}
+          VALVE_STATS_URL: ${{ vars.VALVE_STATS_URL }}  # our server's valve_stats.json; empty = STRATZ's numbers
         run: python build_feed.py site/stats.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

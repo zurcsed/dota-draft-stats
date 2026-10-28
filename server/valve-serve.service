@@ -1,0 +1,14 @@
+[Unit]
+Description=Serve valve_stats.json to the feed builder (public folder, nothing else)
+After=network-online.target
+
+[Service]
+User=collector
+WorkingDirectory=/opt/dota-collector/public
+ExecStart=/usr/bin/python3 -m http.server 8080 --bind 0.0.0.0
+Restart=always
+RestartSec=10
+MemoryMax=100M
+
+[Install]
+WantedBy=multi-user.target

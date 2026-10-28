@@ -1,0 +1,8 @@
+[Unit]
+Description=Make valve_stats.json from the stored matches and prune the old ones
+
+[Service]
+Type=oneshot
+User=collector
+WorkingDirectory=/opt/dota-collector
+ExecStart=/usr/bin/python3 /opt/dota-collector/valve_export.py /opt/dota-collector/public/valve_stats.json 7 --prune 14

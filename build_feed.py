@@ -6,6 +6,7 @@ The file is the helper's own cache format without the "with allies" table (not u
 lane pairs too rare to be used, ~350 KB + lanes.
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,14 @@ def main(target):
     raw = data.collect(lambda n, total: print(f"{n}/{total}", end="\r", file=sys.stderr))
     if raw["source"] != "stratz":
         sys.exit("STRATZ data was not collected")
+    url = os.environ.get("VALVE_STATS_URL")  # our own server's file (valve_export.py); without it STRATZ's numbers stay
+    if url:
+        valve = data.download_valve(url)
+        if valve:
+            data.apply_valve(raw, valve)
+            print(f"Valve numbers: {valve['matches']} matches until {valve['to']}", file=sys.stderr)
+        else:
+            print("Valve numbers are missing, too small or too old: STRATZ's stay", file=sys.stderr)
     raw.pop("synergy", None)
     raw["lanes"] = {hero: {position: {partner: cell for partner, cell in partners.items() if cell[0] >= MIN_LANE_GAMES}
                            for position, partners in by_position.items()}

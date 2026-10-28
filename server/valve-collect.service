@@ -1,0 +1,16 @@
+[Unit]
+Description=Valve match collector for the Dota draft helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=collector
+WorkingDirectory=/opt/dota-collector
+EnvironmentFile=/etc/dota-collector.env
+ExecStart=/usr/bin/python3 /opt/dota-collector/valve_collect.py
+Restart=always
+RestartSec=30
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target
