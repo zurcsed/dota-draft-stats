@@ -47,6 +47,9 @@ BRACKET = None
 WEEKS = 4  # complete weeks, plus the running week (INCLUDE_RUNNING_WEEK)
 INCLUDE_RUNNING_WEEK = True
 REQUEST_PAUSE = 0.3
+# "Statistics are temporarily unavailable ... Please retry in a moment": the cause of every failed feed
+# build in October 2026 (the analytics database at capacity), so such answers are asked again
+BUSY_RETRIES, BUSY_PAUSE = 6, 20
 POSITIONS = {"POSITION_1": 1, "POSITION_2": 2, "POSITION_3": 3, "POSITION_4": 4, "POSITION_5": 5}
 LANE_POSITIONS = (1, 3, 4, 5)  # mid has no lane partner
 
@@ -120,7 +123,24 @@ def token():
         return None
 
 
+def _busy(answer):
+    """STRATZ answered, but only that its statistics are busy for a moment."""
+    errors = answer.get("errors") or []
+    return bool(errors) and all("temporarily unavailable" in e.get("message", "") for e in errors)
+
+
 def _query(query, retries=3):
+    for attempt in range(BUSY_RETRIES + 1):
+        answer = _post(query, retries)
+        if not _busy(answer) or attempt == BUSY_RETRIES:
+            break
+        time.sleep(BUSY_PAUSE)
+    if answer.get("errors"):
+        raise StratzError("STRATZ: " + "; ".join(e.get("message", "?") for e in answer["errors"]))
+    return answer["data"]
+
+
+def _post(query, retries):
     request = urllib.request.Request(
         API, data=json.dumps({"query": query}).encode(),
         headers={"Authorization": f"Bearer {token()}", "Content-Type": "application/json",
@@ -142,9 +162,7 @@ def _query(query, retries=3):
             if last:
                 raise StratzError(f"STRATZ не ответил: {e}") from None
             time.sleep(5)
-    if answer.get("errors"):
-        raise StratzError("STRATZ: " + "; ".join(e.get("message", "?") for e in answer["errors"]))
-    return answer["data"]
+    return answer
 
 
 def fetch(hero_ids, progress=None):

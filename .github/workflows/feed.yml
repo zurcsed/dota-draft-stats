@@ -38,3 +38,8 @@ jobs:
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
+      # after publishing (STRATZ's part is still fresh): a red run, and GitHub's e-mail about it, when our
+      # Valve server sent nothing fresh - the helper would quietly fall back to STRATZ's numbers
+      - name: Check the Valve numbers from our server
+        if: vars.VALVE_STATS_URL != ''
+        run: python build_feed.py --check-valve site/stats.json

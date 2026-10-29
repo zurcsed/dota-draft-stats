@@ -4,15 +4,31 @@ Run by GitHub Actions every 6 hours (.github/workflows/feed.yml) with the STRATZ
     python build_feed.py site/stats.json
 The file is the helper's own cache format without the "with allies" table (not used) and without
 lane pairs too rare to be used, ~350 KB + lanes.
+    python build_feed.py --check-valve site/stats.json
+fails when the file has no fresh Valve numbers from our server (the collector or the export stopped).
 """
 import json
 import sys
+import time
 from pathlib import Path
 
 import data
 import stratz
 
 MIN_LANE_GAMES = 100  # scoring.MIN_PAIR_GAMES: rarer lane pairs are never used (scoring.py is not in feed-repo)
+# the server exports once a day, so its newest match is up to ~a day old; older means it stopped
+VALVE_FRESH_HOURS = 36
+
+
+def valve_problem(raw, now=None):
+    """Why the feed's Valve numbers are missing or old, or None when they are fine."""
+    valve = raw.get("valve")
+    if not valve:
+        return "no Valve numbers in the feed: the server's file is missing, too small or older than 3 days"
+    hours = ((now or time.time()) - valve["to"]) / 3600
+    if hours > VALVE_FRESH_HOURS:
+        return f"the newest Valve match is {hours:.0f} hours old: is the export on the server running?"
+    return None
 
 
 def main(target):
@@ -35,4 +51,7 @@ def main(target):
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--check-valve"]:
+        problem = valve_problem(json.loads(Path(sys.argv[2]).read_text(encoding="utf-8")))
+        sys.exit(problem)  # None = success
     main(sys.argv[1] if len(sys.argv) > 1 else "site/stats.json")
