@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly check: Dota Pro Tracker builds once a week, refused ones again the next nights
+
+[Timer]
+# the site asked for 20:00-08:00 UTC; no Persistent: a missed night is not made up in the daytime
+OnCalendar=*-*-* 20:30:00 UTC
+
+[Install]
+WantedBy=timers.target

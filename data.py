@@ -217,6 +217,26 @@ def feed_url():
     return os.environ.get("DRAFT_HELPER_FEED", FEED_URL)
 
 
+def feed_file_url(name):
+    """Another file of the shared feed, next to stats.json (builds.json, protracker.json)."""
+    return feed_url().rsplit("/", 1)[0] + "/" + name
+
+
+def download_newer(url, path, file_format, have_at=0):
+    """Save the JSON file at `url` to `path` when it has `file_format` and is newer ("fetched_at") than
+    `have_at`; True if it did. A file of another format (a newer program's) is left alone."""
+    request = urllib.request.Request(url, headers={"User-Agent": "dota-draft-helper", "Cache-Control": "no-cache"})
+    with urllib.request.urlopen(request, timeout=120) as resp:
+        raw = json.load(resp)
+    if raw.get("format") != file_format or raw.get("fetched_at", 0) <= have_at:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(raw), encoding="utf-8")
+    tmp.replace(path)
+    return True
+
+
 def _save(raw):
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = CACHE_FILE.with_suffix(".tmp")

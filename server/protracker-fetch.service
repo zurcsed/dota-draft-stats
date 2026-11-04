@@ -1,0 +1,10 @@
+[Unit]
+Description=Dota Pro Tracker builds for the shared feed (weekly, by agreement with the site; see protracker.py)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=collector
+WorkingDirectory=/opt/dota-collector
+ExecStart=/usr/bin/python3 /opt/dota-collector/protracker.py --to /opt/dota-collector/public/protracker.json --weekly
+MemoryMax=200M

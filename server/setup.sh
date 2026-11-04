@@ -6,6 +6,10 @@
 #   valve-collect  collects the matches all the time and restarts itself after a crash or a reboot
 #   valve-export   (daily timer) makes valve_stats.json from the last 7 days and prunes old matches
 #   valve-serve    gives the file to the feed builder at http://<server ip>:8080/valve_stats.json
+# and a nightly timer:
+#   protracker-fetch  Dota Pro Tracker's builds once a week (20:30 UTC, as agreed with the site), served
+#                  at http://<server ip>:8080/protracker.json for the feed builder
+# Run it again after the code changes: it takes the new code (git pull) and installs the units.
 set -euo pipefail
 
 APP=/opt/dota-collector
@@ -35,7 +39,10 @@ install -m 644 "$APP/server/valve-collect.service" /etc/systemd/system/valve-col
 install -m 644 "$APP/server/valve-export.service" /etc/systemd/system/valve-export.service
 install -m 644 "$APP/server/valve-export.timer" /etc/systemd/system/valve-export.timer
 install -m 644 "$APP/server/valve-serve.service" /etc/systemd/system/valve-serve.service
+install -m 644 "$APP/server/protracker-fetch.service" /etc/systemd/system/protracker-fetch.service
+install -m 644 "$APP/server/protracker-fetch.timer" /etc/systemd/system/protracker-fetch.timer
 systemctl daemon-reload
+systemctl enable --now protracker-fetch.timer  # needs no key
 
 if grep -q PUT_THE_KEY_HERE /etc/dota-collector.env; then
     echo
@@ -44,4 +51,5 @@ if grep -q PUT_THE_KEY_HERE /etc/dota-collector.env; then
 else
     systemctl enable --now valve-collect valve-serve valve-export.timer
     echo "Started. Look at the progress: journalctl -u valve-collect -n 20 --no-pager"
+    echo "Dota Pro Tracker: next run $(systemctl show protracker-fetch.timer -p NextElapseUSecRealtime --value)"
 fi
