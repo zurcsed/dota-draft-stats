@@ -79,7 +79,7 @@ def build_files(statistics, folder, now=None, get=None):
     if not (pro and pro.get("format") == protracker.FORMAT and pro.get("heroes")):
         pro = get(data.feed_file_url("protracker.json"))
     if pro and pro.get("format") == protracker.FORMAT and pro.get("heroes"):
-        _write(folder / "protracker.json", pro)
+        _write(folder / "protracker.json", dict(pro, attribution=protracker.ATTRIBUTION))
 
 
 def main(target):

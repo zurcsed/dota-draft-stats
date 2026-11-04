@@ -17,7 +17,8 @@
 
 - **Общая база** — `stats.json` на GitHub Pages. GitHub Actions пересобирает её каждые 6 часов из STRATZ API (рейтинговые матчи, все ранги, 4 завершённые недели и текущая). Программа качает файл сама, свой ключ STRATZ не нужен.
 - **Матчи Valve** — отдельный сервер собирает публичные матчи через Steam Web API, оставляет только режим All Pick (длиннее 10 минут, последние 7 суток), считает по ним винрейты и контрпики и отдаёт файл `valve_stats.json`. Ранги, позиции и линии Valve не отдаёт, они берутся из STRATZ.
-- **Билд в игре** — предметы, нетворс и таланты сильных игроков из STRATZ (`builds.json`, раз в сутки). Раскачка, таланты и начальный закуп — данные: [Dota Pro Tracker](https://dota2protracker.com), по договорённости с сайтом. Наш сервер раз в неделю ночью забирает их и отдаёт в `protracker.json`, а программа скачивает этот файл с GitHub Pages и к сайту сама не обращается.
+- **Билд в игре** — предметы, нетворс и таланты сильных игроков из STRATZ (`builds.json`, раз в сутки). Раскачка, таланты и начальный закуп берутся из Dota Pro Tracker: наш сервер раз в неделю ночью забирает их и отдаёт в `protracker.json`, а программа скачивает этот файл с GitHub Pages и к сайту сама не обращается.
+- **Данные: [Dota Pro Tracker](https://dota2protracker.com/)** — раскачка, таланты и начальный закуп, по договорённости с сайтом.
 
 ## Что в репозитории
 
@@ -48,7 +49,11 @@ Draft Helper shows an overlay with the top-5 hero picks during a Dota 2 draft an
 
 **[Download Draft Helper.exe](https://github.com/zurcsed/dota-draft-stats/raw/main/Draft%20Helper.exe)** (Windows, single file, no installation).
 
-This repository publishes the shared statistics for the app: a GitHub Actions job builds `stats.json` from the STRATZ API every 6 hours and serves it on GitHub Pages. A small server collects public Valve matches (Steam Web API) and provides win rates and counters computed from them. The in-game build page uses item, net worth and talent data of strong players from STRATZ, and skill orders, talents and starting items — data: [Dota Pro Tracker](https://dota2protracker.com), used by agreement with the site: our server fetches them once a week at night, and the app downloads the copy from GitHub Pages instead of asking the site. Only public statistics and Valve's official Game State Integration are used; game memory is never read.
+This repository publishes the shared statistics for the app: a GitHub Actions job builds `stats.json` from the STRATZ API every 6 hours and serves it on GitHub Pages. A small server collects public Valve matches (Steam Web API) and provides win rates and counters computed from them. The in-game build page uses item, net worth and talent data of strong players from STRATZ, and skill orders, talents and starting items from Dota Pro Tracker: our server fetches them once a week at night, and the app downloads the copy from GitHub Pages instead of asking the site. Only public statistics and Valve's official Game State Integration are used; game memory is never read.
+
+Data sources:
+
+- **Data: [Dota Pro Tracker](https://dota2protracker.com/)** — skill orders, talents and starting items, used by agreement with the site.
 
 Setup: repository secret `STRATZ_TOKEN`, optional variable `VALVE_STATS_URL`, Settings → Pages → Source: "GitHub Actions".
 

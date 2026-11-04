@@ -41,6 +41,8 @@ BUNDLED_FILE = paths.BUNDLED / "data" / "protracker.json"  # a copy inside the e
 FORMAT = 1
 SOURCE = "Dota Pro Tracker"
 SOURCE_URL = "https://dota2protracker.com"
+# inside protracker.json for whoever takes the file from GitHub Pages without the README (their ask 2026-11-04)
+ATTRIBUTION = f"data: {SOURCE} — {SOURCE_URL}/"
 PAUSE = 3.0  # seconds between requests; the agreed limit is one per 2 seconds
 REFUSED_PAUSE = 60  # after a 403/429 without Retry-After (one in five on 2026-11-03), then longer each time
 RETRIES = 3
@@ -131,11 +133,11 @@ def summarize(build):
 
 def fetch(progress=None, pause=PAUSE, path=FILE, sleep=time.sleep):
     """Every hero on each of its positions, one request after another, saved every SAVE_EVERY builds:
-    {"format", "fetched_at", "source", "source_url", "heroes": {hero: {position: build}}, "refused": [[hero, position]]}.
+    {"format", "fetched_at", "source", "source_url", "attribution", "heroes": {hero: {position: build}}, "refused": [[hero, position]]}.
     A build the site keeps refusing keeps its old copy (and is in "refused")."""
     old = load(path) or {}  # a refused build keeps its last copy
     result = {"format": FORMAT, "fetched_at": time.time(), "source": SOURCE, "source_url": SOURCE_URL,
-              "heroes": old.get("heroes", {}), "refused": []}
+              "attribution": ATTRIBUTION, "heroes": old.get("heroes", {}), "refused": []}
     rows = _get("/heroes/list", sleep=sleep)
     jobs = [(row["hero_id"], p) for row in rows for p in hero_positions(row)]
     for n, (hero, position) in enumerate(jobs, 1):
