@@ -9,6 +9,8 @@
 # and a nightly timer:
 #   protracker-fetch  Dota Pro Tracker's builds once a week (20:30 UTC, as agreed with the site), served
 #                  at http://<server ip>:8080/protracker.json for the feed builder
+# and the launch counter (launch-count, port 80): a random install number and the version a day from
+# the friends' exe, no IP addresses; see them with: python3 /opt/dota-collector/launch_count.py --report
 # Run it again after the code changes: it takes the new code (git pull) and installs the units.
 set -euo pipefail
 
@@ -41,8 +43,10 @@ install -m 644 "$APP/server/valve-export.timer" /etc/systemd/system/valve-export
 install -m 644 "$APP/server/valve-serve.service" /etc/systemd/system/valve-serve.service
 install -m 644 "$APP/server/protracker-fetch.service" /etc/systemd/system/protracker-fetch.service
 install -m 644 "$APP/server/protracker-fetch.timer" /etc/systemd/system/protracker-fetch.timer
+install -m 644 "$APP/server/launch-count.service" /etc/systemd/system/launch-count.service
 systemctl daemon-reload
 systemctl enable --now protracker-fetch.timer  # needs no key
+systemctl enable launch-count && systemctl restart launch-count  # restart: the new code after a pull
 
 if grep -q PUT_THE_KEY_HERE /etc/dota-collector.env; then
     echo

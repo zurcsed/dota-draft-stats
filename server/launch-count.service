@@ -1,0 +1,15 @@
+[Unit]
+Description=Count the friends' helpers (a random install number and the version a day; no IP addresses)
+After=network-online.target
+
+[Service]
+User=collector
+WorkingDirectory=/opt/dota-collector
+ExecStart=/usr/bin/python3 /opt/dota-collector/launch_count.py --serve
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Restart=always
+RestartSec=10
+MemoryMax=50M
+
+[Install]
+WantedBy=multi-user.target
