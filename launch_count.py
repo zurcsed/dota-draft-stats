@@ -94,6 +94,8 @@ class _Handler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(url.query)
         ok = url.path == "/ping" and record(self.db, query.get("id", [""])[0], query.get("v", [""])[0])
         self.send_response(204 if ok else 404)
+        self.send_header("Content-Length", "0")  # without it a proxy on the way waits for a body
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
 
     def log_message(self, *args):  # the default log has the IP address: keep nothing
