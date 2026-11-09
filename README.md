@@ -13,7 +13,7 @@
 
 Программа использует только публичную статистику и официальные данные игры (Game State Integration). Она не читает память игры.
 
-Раз в сутки программа сообщает нашему серверу случайный номер установки и свою версию — только чтобы знать, сколько человек ей пользуется. Больше ничего не отправляется, IP-адреса не сохраняются (`launch_count.py`).
+Раз в сутки, когда запущена Dota 2, программа сообщает нашему серверу случайный номер установки и свою версию — только чтобы знать, сколько человек ей пользуется. Больше ничего не отправляется, IP-адреса не сохраняются (`launch_count.py`).
 
 ## Откуда статистика
 
@@ -30,7 +30,7 @@
 | `data.py`, `stratz.py`, `paths.py` | загрузка и разбор статистики (общие с программой) |
 | `builds.py`, `protracker.py` | билды из STRATZ и из Dota Pro Tracker |
 | `valve_collect.py`, `valve_export.py`, `valve_stats.py` | сбор матчей Valve и расчёт статистики |
-| `launch_count.py` | счётчик запусков: номер установки и версия раз в сутки, без IP |
+| `launch_count.py` | счётчик: номер установки и версия раз в сутки при запущенной Dota, без IP |
 | `server/` | установка сборщика на сервер (Ubuntu, systemd) |
 | `.github/workflows/feed.yml` | сборка и публикация `stats.json` |
 
@@ -52,7 +52,7 @@ Draft Helper shows an overlay with the top-5 hero picks during a Dota 2 draft an
 
 **[Download Draft Helper.exe](https://github.com/zurcsed/dota-draft-stats/raw/main/Draft%20Helper.exe)** (Windows, single file, no installation).
 
-This repository publishes the shared statistics for the app: a GitHub Actions job builds `stats.json` from the STRATZ API every 6 hours and serves it on GitHub Pages. A small server collects public Valve matches (Steam Web API) and provides win rates and counters computed from them. The in-game build page uses item, net worth and talent data of strong players from STRATZ, and skill orders, talents and starting items from Dota Pro Tracker: our server fetches them once a week at night, and the app downloads the copy from GitHub Pages instead of asking the site. Only public statistics and Valve's official Game State Integration are used; game memory is never read. Once a day the app tells our server a random install number and its version, only to count how many people use it; nothing else is sent and IP addresses are not stored (`launch_count.py`).
+This repository publishes the shared statistics for the app: a GitHub Actions job builds `stats.json` from the STRATZ API every 6 hours and serves it on GitHub Pages. A small server collects public Valve matches (Steam Web API) and provides win rates and counters computed from them. The in-game build page uses item, net worth and talent data of strong players from STRATZ, and skill orders, talents and starting items from Dota Pro Tracker: our server fetches them once a week at night, and the app downloads the copy from GitHub Pages instead of asking the site. Only public statistics and Valve's official Game State Integration are used; game memory is never read. Once a day, while Dota 2 is running, the app tells our server a random install number and its version, only to count how many people use it; nothing else is sent and IP addresses are not stored (`launch_count.py`).
 
 Data sources:
 
