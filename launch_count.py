@@ -147,6 +147,8 @@ def report(db, days=14, today=None):
     lines += ["",
               f"Играли за последние 7 дней: {len({i for d, i in played if d in week})}",
               f"Всего играли хоть раз: {len(first_day)}",
+              "Запуски старых версий (до v1.5, вместе с проверками антивирусов) за 7 дней: "
+              f"{len({i for d, i, v in launches if d in week and _numbers(v) < FIRST_DOTA_VERSION})}",
               "«Играли» — запущенная Dota 2 подключилась к подсказчику (с v1.5; старые версии здесь не видны)."]
     return lines
 
