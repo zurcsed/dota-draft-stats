@@ -1,13 +1,19 @@
-"""How many people use the friends' exe: once a day it tells our server a random install number and its
-version. Nothing else is sent; the server keeps no IP addresses, only (day, number, version).
+"""How many people use the friends' exe. Once a day, when Dota 2 is running and talks to the helper, the
+exe tells our server a random install number and its version. Nothing else is sent; the server keeps no IP
+addresses, only (day, number, version). Waiting for Dota leaves out the antivirus sandboxes that start
+every downloaded exe on a clean machine (v1.4 counted every start: 29 "installs" for 7 downloads).
+The server also notes the GitHub download count a few times a day.
 
-    ping()                                  the exe side (main.py, once a day; never in the developer's copy)
+    count_dota_day(version)                 the exe side (main.py, on Dota's packets; never in the developer's copy)
     python3 launch_count.py --serve         the server side (launch-count.service, port 80)
-    python3 launch_count.py --report [days] how many installs ran the helper each day (on the server)
+    python3 launch_count.py --report [days] downloads and players per day (on the server; статистика.bat)
 """
+import datetime
+import json
 import re
 import sqlite3
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -18,11 +24,21 @@ from pathlib import Path
 import paths
 
 URL = "http://62.109.7.63/ping"
+RELEASES_API = "https://api.github.com/repos/zurcsed/dota-draft-stats/releases?per_page=100"
 ID_FILE = paths.CACHE / "install_id.txt"
 DB = paths.CACHE / "launches.sqlite"
 PORT = 80
+DOWNLOADS_EVERY = 3 * 3600
+FIRST_DOTA_VERSION = (1, 5)  # older versions counted every start, sandboxes too
 ID_RE = re.compile(r"[0-9a-f]{32}")
 VERSION_RE = re.compile(r"\d+(\.\d+){0,3}")
+
+_counted_day = None
+_lock = threading.Lock()
+
+
+def _today():
+    return time.strftime("%Y-%m-%d", time.gmtime())
 
 
 def install_id():
@@ -40,49 +56,98 @@ def install_id():
 
 
 def ping(version):
-    """Count this start; any failure (no network, server down) is ignored - the helper does not depend on it."""
-    query = urllib.parse.urlencode({"id": install_id(), "v": version})
+    """Count this day; any failure (no network, server down) is ignored - the helper does not depend on it."""
     try:
+        query = urllib.parse.urlencode({"id": install_id(), "v": version})
         with urllib.request.urlopen(f"{URL}?{query}", timeout=10):
             pass
     except Exception:
         pass
 
 
+def count_dota_day(version):
+    """Called on every packet from Dota: the first one of a day sends the ping, in the background."""
+    global _counted_day
+    with _lock:
+        if _counted_day == _today():
+            return
+        _counted_day = _today()
+    threading.Thread(target=ping, args=(version,), daemon=True).start()
+
+
+def _numbers(version):
+    return tuple(int(part) for part in version.split("."))
+
+
 def _open(db):
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE IF NOT EXISTS launches (day TEXT, id TEXT, version TEXT, PRIMARY KEY (day, id))")
+    con.execute("CREATE TABLE IF NOT EXISTS downloads (day TEXT PRIMARY KEY, total INTEGER)")
     return con
 
 
-def record(db, install, version, day=None):
-    """Store one start; False for anything that is not a well-formed number and version."""
-    if not (ID_RE.fullmatch(install or "") and VERSION_RE.fullmatch(version or "")):
-        return False
-    day = day or time.strftime("%Y-%m-%d", time.gmtime())
+def _write(db, sql, values):
     con = _open(db)
     try:
         with con:
-            con.execute("INSERT OR REPLACE INTO launches VALUES (?, ?, ?)", (day, install, version))
+            con.execute(sql, values)
     finally:
         con.close()
+
+
+def record(db, install, version, day=None):
+    """Store one day of one install; False for anything that is not a well-formed number and version."""
+    if not (ID_RE.fullmatch(install or "") and VERSION_RE.fullmatch(version or "")):
+        return False
+    _write(db, "INSERT OR REPLACE INTO launches VALUES (?, ?, ?)", (day or _today(), install, version))
     return True
 
 
-def report(db, days=14):
-    """Lines: installs per day for the last days, installs ever, and which versions they run now."""
+def record_downloads(db, total, day=None):
+    _write(db, "INSERT OR REPLACE INTO downloads VALUES (?, ?)", (day or _today(), int(total)))
+
+
+def github_downloads():
+    """All downloads of all releases' files on GitHub (the raw link in the README is not counted by GitHub)."""
+    request = urllib.request.Request(RELEASES_API, headers={"User-Agent": "dota-draft-helper-server",
+                                                            "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(request, timeout=30) as resp:
+        return sum(asset["download_count"] for release in json.load(resp) for asset in release["assets"])
+
+
+def report(db, days=14, today=None):
+    """Lines in Russian for the developer: per day downloads, players with the helper and new ones."""
     con = _open(db)
     try:
-        per_day = con.execute("SELECT day, COUNT(*) FROM launches GROUP BY day ORDER BY day DESC LIMIT ?",
-                              (days,)).fetchall()
-        ever = con.execute("SELECT COUNT(DISTINCT id) FROM launches").fetchone()[0]
-        versions = con.execute("SELECT version, COUNT(*) FROM (SELECT id, version, MAX(day) FROM launches"
-                               " GROUP BY id) GROUP BY version ORDER BY version DESC").fetchall()
+        launches = con.execute("SELECT day, id, version FROM launches ORDER BY day").fetchall()
+        downloads = dict(con.execute("SELECT day, total FROM downloads").fetchall())
     finally:
         con.close()
-    lines = [f"{day}: {count}" for day, count in per_day]
-    lines.append(f"installs ever: {ever}")
-    lines.append("latest version per install: " + (", ".join(f"v{v} {n}" for v, n in versions) or "none"))
+    played = [(day, install) for day, install, version in launches if _numbers(version) >= FIRST_DOTA_VERSION]
+    first_day = {}
+    for day, install in played:
+        first_day.setdefault(install, day)
+    end = datetime.date.fromisoformat(today or _today())
+    last_days = [(end - datetime.timedelta(days=n)).isoformat() for n in range(days)]
+    week = set(last_days[:7])
+
+    def downloads_on(day):
+        before = [total for d, total in downloads.items() if d < day]
+        if day not in downloads or not before:
+            return "—"
+        return str(downloads[day] - max(before))
+
+    lines = [f"Скачиваний exe с GitHub всего: {max(downloads.values()) if downloads else '—'}"
+             " (по ссылке raw из README GitHub не считает)", "",
+             "дата         скачали  играли с подсказчиком  из них впервые"]
+    for day in last_days:
+        players = {install for d, install in played if d == day}
+        new = sum(1 for install in players if first_day[install] == day)
+        lines.append(f"{day}  {downloads_on(day):>7}  {len(players):>21}  {new:>14}")
+    lines += ["",
+              f"Играли за последние 7 дней: {len({i for d, i in played if d in week})}",
+              f"Всего играли хоть раз: {len(first_day)}",
+              "«Играли» — запущенная Dota 2 подключилась к подсказчику (с v1.5; старые версии здесь не видны)."]
     return lines
 
 
@@ -102,9 +167,19 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _note_downloads(db):
+    while True:
+        try:
+            record_downloads(db, github_downloads())
+        except Exception as e:  # GitHub down or its limit: next time
+            print(f"downloads: {e}", flush=True)
+        time.sleep(DOWNLOADS_EVERY)
+
+
 def serve(port=PORT, db=DB):
     Path(db).parent.mkdir(parents=True, exist_ok=True)
     _Handler.db = db
+    threading.Thread(target=_note_downloads, args=(db,), daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", port), _Handler).serve_forever()
 
 
