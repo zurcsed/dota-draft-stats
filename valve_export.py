@@ -1,8 +1,8 @@
 """Our own hero statistics from the matches valve_collect.py stored, in the helper's cache format.
 
-    python valve_export.py                          writes cache/valve_stats.json (last 7 days of All Pick)
+    python valve_export.py                          writes cache/valve_stats.json (last 14 days of All Pick)
     python valve_export.py out.json 14              another file and period
-    python valve_export.py out.json 7 --prune 14    ...and deletes the stored matches older than 14 days
+    python valve_export.py out.json 14 --prune 14   ...and deletes the stored matches older than 14 days (the server)
     python valve_export.py --seed seed.sqlite 14    a copy of the last 14 days for the server
 
 data.py puts these numbers (winrates and counters) in place of STRATZ's; positions and lane partners
@@ -20,7 +20,7 @@ import valve_collect
 import valve_stats
 
 ALL_PICK = 22
-DAYS = 7
+DAYS = 14  # 2026-11-10: closer to Dotabuff than 7 (0.42 points off instead of 0.64), rare heroes steadier
 FILE = paths.CACHE / "valve_stats.json"
 
 

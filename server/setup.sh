@@ -4,7 +4,7 @@
 # What it does: installs Python and git, takes the code from the public feed repository, creates a
 # user without a password, and starts three systemd services:
 #   valve-collect  collects the matches all the time and restarts itself after a crash or a reboot
-#   valve-export   (daily timer) makes valve_stats.json from the last 7 days and prunes old matches
+#   valve-export   (daily timer) makes valve_stats.json from the last 14 days and prunes old matches
 #   valve-serve    gives the file to the feed builder at http://<server ip>:8080/valve_stats.json
 # and a nightly timer:
 #   protracker-fetch  Dota Pro Tracker's builds once a week (20:30 UTC, as agreed with the site), served
