@@ -35,6 +35,18 @@ VALVE_MIN_MATCHES = 500_000  # a smaller sample is worse than STRATZ's
 VALVE_URL = "http://62.109.7.63:8080/valve_stats.json"  # our server (server/setup.sh); VALVE_STATS_URL overrides it
 
 
+RETRY_CODES = (429, 500, 502, 503, 504, 520, 521, 522, 524)  # rate limit and the server's (or Cloudflare's) trouble
+MAX_RETRY_PAUSE = 120
+
+
+def retry_pause(error, default):
+    """Seconds to wait before asking again: the answer's Retry-After (whole seconds) if it has one."""
+    value = (error.headers or {}).get("Retry-After")
+    if value and str(value).strip().isdigit():
+        return min(int(value), MAX_RETRY_PAUSE)
+    return default
+
+
 def _get(path, retries=3):
     req = urllib.request.Request(API + path, headers={"User-Agent": "dota-draft-helper"})
     for attempt in range(retries):
@@ -43,8 +55,8 @@ def _get(path, retries=3):
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.load(resp)
         except urllib.error.HTTPError as e:
-            if e.code == 429 and not last:
-                time.sleep(10)
+            if e.code in RETRY_CODES and not last:  # OpenDota's 500/521/522 stopped whole downloads (logs/errors.log)
+                time.sleep(retry_pause(e, 10))
                 continue
             raise
         except (urllib.error.URLError, TimeoutError):
@@ -127,9 +139,10 @@ class HeroData:
 
 
 def valve_file_changed(since):
-    """A Valve statistics file written after `since` (the numbers should be made again)."""
+    """A Valve statistics file written after `since` (the numbers should be made again). Two seconds of slack:
+    Windows dates a file by a coarser clock, which can be a little ahead of time.time()."""
     try:
-        return VALVE_FILE.stat().st_mtime > since
+        return VALVE_FILE.stat().st_mtime > since + 2
     except OSError:
         return False
 
@@ -197,7 +210,7 @@ def apply_valve(raw, valve):
 def load_cache():
     try:
         return HeroData(json.loads(CACHE_FILE.read_text(encoding="utf-8")))
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):  # a file of the wrong shape: download again
         return None
 
 
@@ -222,27 +235,34 @@ def feed_file_url(name):
     return feed_url().rsplit("/", 1)[0] + "/" + name
 
 
-def download_newer(url, path, file_format, have_at=0):
+def download_newer(url, path, file_format, have_at=0, check=None):
     """Save the JSON file at `url` to `path` when it has `file_format` and is newer ("fetched_at") than
-    `have_at`; True if it did. A file of another format (a newer program's) is left alone."""
+    `have_at`; True if it did. A file of another format (a newer program's) is left alone. `check(path)`
+    reads the downloaded copy back: a file it can't read (None or an error) replaces nothing."""
     request = urllib.request.Request(url, headers={"User-Agent": "dota-draft-helper", "Cache-Control": "no-cache"})
     with urllib.request.urlopen(request, timeout=120) as resp:
         raw = json.load(resp)
-    if raw.get("format") != file_format or raw.get("fetched_at", 0) <= have_at:
+    if not isinstance(raw, dict) or raw.get("format") != file_format or raw.get("fetched_at", 0) <= have_at:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(raw), encoding="utf-8")
+    if check and check(tmp) is None:
+        tmp.unlink()
+        raise ValueError(f"{url}: the file can't be read, the old copy stays")
     tmp.replace(path)
     return True
 
 
 def _save(raw):
+    """Write the cache only if it reads back (a broken feed file used to replace a good cache)."""
+    text = json.dumps(raw)
+    hero_data = HeroData(json.loads(text))
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = CACHE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(raw), encoding="utf-8")
+    tmp.write_text(text, encoding="utf-8")
     tmp.replace(CACHE_FILE)
-    return HeroData(raw)
+    return hero_data
 
 
 def _download_feed(url):
@@ -291,6 +311,9 @@ def collect(progress=None):
             apply_valve(raw, valve)
     if raw["source"] == "opendota":
         raw["matchups"] = _fetch_opendota_matchups(heroes, progress)
+    # the end of the download, after current_valve() wrote its file: valve_file_changed() compares the two, and
+    # with the start of the download every check asked for a new one (all of STRATZ every ~12 minutes)
+    raw["fetched_at"] = time.time()
     return raw
 
 

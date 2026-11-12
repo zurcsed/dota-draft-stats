@@ -140,6 +140,15 @@ def _query(query, retries=3):
     return answer["data"]
 
 
+RETRY_CODES = (429, 500, 502, 503, 504)
+
+
+def _retry_pause(error, default=10, longest=120):
+    """Retry-After of the answer (whole seconds) if it has one, else `default`."""
+    value = error.headers.get("Retry-After") if error.headers else None
+    return min(int(value), longest) if value and value.strip().isdigit() else default
+
+
 def _post(query, retries):
     request = urllib.request.Request(
         API, data=json.dumps({"query": query}).encode(),
@@ -152,8 +161,8 @@ def _post(query, retries):
                 answer = json.load(resp)
             break
         except urllib.error.HTTPError as e:
-            if e.code == 429 and not last:
-                time.sleep(10)
+            if e.code in RETRY_CODES and not last:  # a 503 lost whole 3-minute downloads (logs/errors.log)
+                time.sleep(_retry_pause(e))
                 continue
             if e.code in (401, 403):
                 raise StratzError("STRATZ не принял ключ (проверь STRATZ_TOKEN)") from None

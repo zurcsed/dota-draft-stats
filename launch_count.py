@@ -31,7 +31,7 @@ PORT = 80
 DOWNLOADS_EVERY = 3 * 3600
 FIRST_DOTA_VERSION = (1, 5)  # older versions counted every start, sandboxes too
 ID_RE = re.compile(r"[0-9a-f]{32}")
-VERSION_RE = re.compile(r"\d+(\.\d+){0,3}")
+VERSION_RE = re.compile(r"[0-9]{1,4}(\.[0-9]{1,4}){0,3}")  # a version of 5000 digits broke the report
 
 _counted_day = None
 _lock = threading.Lock()
@@ -76,7 +76,11 @@ def count_dota_day(version):
 
 
 def _numbers(version):
-    return tuple(int(part) for part in version.split("."))
+    """(1, 5) for "1.5"; (0,) for anything else, so one odd row can't stop the report."""
+    try:
+        return tuple(int(part) for part in version.split("."))
+    except ValueError:
+        return (0,)
 
 
 def _open(db):

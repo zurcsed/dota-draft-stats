@@ -36,7 +36,7 @@ RETRY_PAUSES = (5, 15, 30, 60, 120)  # Valve's Dota API answers 429 / 5xx now an
 RETRY_CODES = (404, 429, 500, 502, 503, 504)  # Valve answered 404 for a valid address once, during an outage (2026-10-28)
 OUTAGE_WAIT = 300  # still no answer after the retries: the API is down (it happens for hours), wait it out
 # a dropped connection or a cut-off body while reading the answer is raised outside URLError
-NETWORK_ERRORS = (urllib.error.URLError, OSError, http.client.HTTPException, ValueError)
+NETWORK_ERRORS = (urllib.error.URLError, OSError, http.client.HTTPException, ValueError, KeyError)
 
 
 def key():
@@ -57,7 +57,7 @@ def _get(method, **params):
     for pause in RETRY_PAUSES + (None,):
         try:
             with urllib.request.urlopen(request, timeout=30) as resp:
-                return json.load(resp)["result"]
+                return json.load(resp)["result"]  # no "result" (KeyError): Valve's trouble, asked again
         except urllib.error.HTTPError as e:
             if e.code == 403:
                 raise SystemExit("Valve did not accept the key (403): check STEAM_API_KEY") from None
@@ -91,6 +91,8 @@ def row(match):
     heroes = [p.get("hero_id", 0) for p in players]
     if match.get("human_players") != 10 or len(players) != 10 or 0 in heroes:
         return None
+    if not (isinstance(match.get("match_id"), int) and isinstance(match.get("match_seq_num"), int)):
+        return None  # one odd match used to stop the collector on the same place after every restart
     radiant = [p["hero_id"] for p in players if p.get("player_slot", 0) < 128]  # 0-4 Radiant, 128-132 Dire
     dire = [p["hero_id"] for p in players if p.get("player_slot", 0) >= 128]
     if len(radiant) != 5 or len(dire) != 5:
@@ -128,8 +130,10 @@ def _walk(db, hours, log):
     started, seen, kept, outage = time.time(), 0, 0, False
     while stop is None or time.time() < stop:
         try:
-            matches = _get("GetMatchHistoryBySequenceNum", start_at_match_seq_num=seq,
-                           matches_requested=BATCH).get("matches") or []
+            answer = _get("GetMatchHistoryBySequenceNum", start_at_match_seq_num=seq, matches_requested=BATCH)
+            matches = answer.get("matches") or []
+            if answer.get("status", 1) != 1:  # an answer without matches that says why: it used to wait silently
+                raise urllib.error.URLError(f"status {answer.get('status')}: {answer.get('statusDetail', '')}")
         except NETWORK_ERRORS as e:
             if not _outage(e):
                 raise
@@ -147,7 +151,7 @@ def _walk(db, hours, log):
             continue
         rows = [r for r in map(row, matches) if r]
         db.executemany("INSERT OR IGNORE INTO matches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
-        seq = _state(db, "next_seq", matches[-1]["match_seq_num"] + 1)
+        seq = _state(db, "next_seq", max(m.get("match_seq_num") or seq for m in matches) + 1)
         db.commit()
         seen, kept = seen + len(matches), kept + len(rows)
         if seen // 1000 != (seen - len(matches)) // 1000:

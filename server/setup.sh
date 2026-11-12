@@ -28,6 +28,7 @@ else
     git clone "$REPO" "$APP"
 fi
 mkdir -p "$APP/cache" "$APP/logs" "$APP/public"
+touch "$APP/public/index.html"  # an empty page instead of the folder's file list at http://<server ip>:8080/
 chown -R collector:collector "$APP"
 
 # the Steam key goes here (only root and the collector can read it)

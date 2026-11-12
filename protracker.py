@@ -131,19 +131,26 @@ def summarize(build):
             "patch": (scope.get("patch_versions") or [None])[-1]}
 
 
-def fetch(progress=None, pause=PAUSE, path=FILE, sleep=time.sleep):
+def fetch(progress=None, pause=PAUSE, path=FILE, sleep=time.sleep, stop=None):
     """Every hero on each of its positions, one request after another, saved every SAVE_EVERY builds:
     {"format", "fetched_at", "source", "source_url", "attribution", "heroes": {hero: {position: build}}, "refused": [[hero, position]]}.
-    A build the site keeps refusing keeps its old copy (and is in "refused")."""
+    A build the site keeps refusing keeps its old copy (and is in "refused"). "fetched_at" becomes new only when
+    every build was asked: a run that died or was stopped (`stop()` true, e.g. the night is over) keeps the old
+    date, so the next night goes on (it used to look done for a week with half the heroes)."""
     old = load(path) or {}  # a refused build keeps its last copy
-    result = {"format": FORMAT, "fetched_at": time.time(), "source": SOURCE, "source_url": SOURCE_URL,
+    started = time.time()
+    result = {"format": FORMAT, "fetched_at": old.get("fetched_at", 0), "source": SOURCE, "source_url": SOURCE_URL,
               "attribution": ATTRIBUTION, "heroes": old.get("heroes", {}), "refused": []}
+    sleep(pause)  # the agreed pace holds between passes too: a second pass came right after a refusal
     rows = _get("/heroes/list", sleep=sleep)
     jobs = [(row["hero_id"], p) for row in rows for p in hero_positions(row)]
     for n, (hero, position) in enumerate(jobs, 1):
         kept = result["heroes"].get(hero, {}).get(position)
-        if kept and kept.get("v") == ITEM_VERSION and result["fetched_at"] - kept.get("fetched_at", 0) < KEEP_FRESH:
+        if kept and kept.get("v") == ITEM_VERSION and started - kept.get("fetched_at", 0) < KEEP_FRESH:
             continue  # got lately (a run that stopped half way goes on where it was)
+        if stop and stop():
+            save(result, path)
+            return result
         sleep(pause)
         try:
             answer = _get(f"/hero/{hero}/builds?position=pos%20{position}", sleep=sleep)
@@ -159,6 +166,7 @@ def fetch(progress=None, pause=PAUSE, path=FILE, sleep=time.sleep):
             save(result, path)
         if progress:
             progress(n, len(jobs))
+    result["fetched_at"] = time.time()
     save(result, path)
     return result
 
@@ -179,20 +187,18 @@ def due(saved, now=None):
 
 
 def load(path=None):
-    """The saved builds with number keys again (the own download, else the copy inside the exe), or None."""
-    raw = None
+    """The saved builds with number keys again (the own download, else the copy inside the exe), or None.
+    A file that can't be read whole (another format, no heroes) is passed over for the next one."""
     for candidate in [path] if path else [FILE, BUNDLED_FILE]:
         try:
             raw = json.loads(Path(candidate).read_text(encoding="utf-8"))
-            break
-        except (OSError, ValueError):
+            if raw.get("format") != FORMAT:
+                continue
+            raw["heroes"] = {int(h): {int(p): b for p, b in positions.items()} for h, positions in raw["heroes"].items()}
+            return raw
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
             continue
-    if raw is None:
-        return None
-    if raw.get("format") != FORMAT:
-        return None
-    raw["heroes"] = {int(h): {int(p): b for p, b in positions.items()} for h, positions in raw["heroes"].items()}
-    return raw
+    return None
 
 
 def describe(build, abilities, items):
@@ -233,7 +239,8 @@ def main():
         print(f"{path} is fresh, nothing refused: nothing to do")
         return
     for _ in range(PASSES if weekly else 1):
-        result = fetch(None if weekly else lambda n, total: print(f"\r{n}/{total}", end="", flush=True), path=path)
+        result = fetch(None if weekly else lambda n, total: print(f"\r{n}/{total}", end="", flush=True), path=path,
+                       stop=(lambda: not in_window()) if weekly else None)  # the site's hours hold inside a pass too
         print(f"\n{sum(len(p) for p in result['heroes'].values())} hero positions -> {path}, "
               f"refused {len(result['refused'])}: {result['refused']}", flush=True)
         if not result["refused"] or not in_window():

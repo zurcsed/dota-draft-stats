@@ -227,26 +227,26 @@ def save(builds, path=BUILDS_FILE):
 
 
 def load(path=None):
-    """The saved builds with integer keys again (the own download, else the copy inside the exe), or None."""
-    raw = None
-    for candidate in [path] if path else [BUILDS_FILE, BUNDLED_FILE]:
-        try:
-            raw = json.loads(Path(candidate).read_text(encoding="utf-8"))
-            break
-        except (OSError, ValueError):
-            continue
-    if raw is None:
-        return None
-    if raw.get("format") != FORMAT:
-        return None
-
+    """The saved builds with integer keys again (the own download, else the copy inside the exe), or None.
+    A file that can't be read whole (another format, a part missing) is passed over for the next one."""
     def ints(value):
         if isinstance(value, dict):
             return {int(k) if k.lstrip("-").isdigit() else k: ints(v) for k, v in value.items()}
         return value
-    for key in ("items", "abilities", "talents", "heroes"):
-        raw[key] = ints(raw[key])
-    return raw
+
+    for candidate in [path] if path else [BUILDS_FILE, BUNDLED_FILE]:
+        try:
+            raw = json.loads(Path(candidate).read_text(encoding="utf-8"))
+            if raw.get("format") != FORMAT:
+                continue
+            for key in ("items", "abilities", "talents", "heroes"):
+                if not isinstance(raw[key], dict):
+                    raise TypeError(key)
+                raw[key] = ints(raw[key])
+            return raw
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return None
 
 
 def describe(builds, hero, position):

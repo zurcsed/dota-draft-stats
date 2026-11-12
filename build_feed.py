@@ -29,6 +29,7 @@ MIN_LANE_GAMES = 100  # scoring.MIN_PAIR_GAMES: rarer lane pairs are never used 
 PROTRACKER_URL = "http://62.109.7.63:8080/protracker.json"  # our server (server/setup.sh); PROTRACKER_URL overrides
 # the server exports once a day, so its newest match is up to ~a day old; older means it stopped
 VALVE_FRESH_HOURS = 36
+RUN_EVERY = 6 * 3600  # .github/workflows/feed.yml
 
 
 def valve_problem(raw, now=None):
@@ -65,7 +66,8 @@ def build_files(statistics, folder, now=None, get=None):
     now = now or time.time()
     get = get or _get_json
     published = get(data.feed_file_url("builds.json"))
-    if published and published.get("format") == builds.FORMAT and now - published["fetched_at"] < builds.REFRESH:
+    # the job runs every RUN_EVERY: waiting for a full day missed the run after it, so builds were ~30 hours old
+    if published and published.get("format") == builds.FORMAT and now - published["fetched_at"] < builds.REFRESH - RUN_EVERY:
         fresh = published  # rebuilt less than a day ago
     else:
         try:
