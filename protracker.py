@@ -26,6 +26,7 @@ or has refused builds, and up to PASSES times while the site still refuses some 
 `python protracker.py Juggernaut 1` prints that build.
 """
 import email.utils
+import http.client
 import json
 import sys
 import time
@@ -69,7 +70,7 @@ def _get(path, retries=RETRIES, sleep=time.sleep):
             if e.code not in (403, 429, 500, 502, 503) or attempt == retries - 1:
                 raise
             sleep(_retry_after(e.headers.get("Retry-After")) or REFUSED_PAUSE * (attempt + 1))
-        except (urllib.error.URLError, TimeoutError):
+        except (urllib.error.URLError, TimeoutError, http.client.HTTPException, json.JSONDecodeError):
             if attempt == retries - 1:
                 raise
             sleep(5)
@@ -140,13 +141,18 @@ def fetch(progress=None, pause=PAUSE, path=FILE, sleep=time.sleep, stop=None):
     old = load(path) or {}  # a refused build keeps its last copy
     started = time.time()
     result = {"format": FORMAT, "fetched_at": old.get("fetched_at", 0), "source": SOURCE, "source_url": SOURCE_URL,
-              "attribution": ATTRIBUTION, "heroes": old.get("heroes", {}), "refused": []}
+              "attribution": ATTRIBUTION, "heroes": old.get("heroes", {}), "refused": [],
+              "pending": [], "incomplete": True,
+              "last_weekly_at": old.get("last_weekly_at", old.get("fetched_at", 0))}
+    refresh_all = started - result["last_weekly_at"] >= WEEKLY
+    pending = {tuple(pair) for pair in old.get("pending", []) + old.get("refused", [])}
     sleep(pause)  # the agreed pace holds between passes too: a second pass came right after a refusal
     rows = _get("/heroes/list", sleep=sleep)
     jobs = [(row["hero_id"], p) for row in rows for p in hero_positions(row)]
     for n, (hero, position) in enumerate(jobs, 1):
         kept = result["heroes"].get(hero, {}).get(position)
-        if kept and kept.get("v") == ITEM_VERSION and started - kept.get("fetched_at", 0) < KEEP_FRESH:
+        if (kept and kept.get("v") == ITEM_VERSION and (hero, position) not in pending
+                and (not refresh_all or started - kept.get("fetched_at", 0) < KEEP_FRESH)):
             continue  # got lately (a run that stopped half way goes on where it was)
         if stop and stop():
             save(result, path)
@@ -162,11 +168,16 @@ def fetch(progress=None, pause=PAUSE, path=FILE, sleep=time.sleep, stop=None):
         main = max(answer or [], key=lambda build: build.get("num_matches") or 0, default=None)  # facets: the most played
         if main and main.get("build_data"):
             result["heroes"].setdefault(hero, {})[position] = dict(summarize(main), fetched_at=time.time(), v=ITEM_VERSION)
+        else:
+            result["pending"].append([hero, position])
         if n % SAVE_EVERY == 0:
             save(result, path)
         if progress:
             progress(n, len(jobs))
     result["fetched_at"] = time.time()
+    if refresh_all:
+        result["last_weekly_at"] = result["fetched_at"]
+    result["incomplete"] = False
     save(result, path)
     return result
 
@@ -183,7 +194,8 @@ def due(saved, now=None):
     """--weekly: download now? When there is no file, it is about a week old, or the site refused builds."""
     if not saved:
         return True
-    return (now if now is not None else time.time()) - saved["fetched_at"] >= WEEKLY or bool(saved.get("refused"))
+    return ((now if now is not None else time.time()) - saved.get("last_weekly_at", saved["fetched_at"]) >= WEEKLY
+            or bool(saved.get("refused") or saved.get("pending") or saved.get("incomplete")))
 
 
 def load(path=None):
@@ -243,7 +255,7 @@ def main():
                        stop=(lambda: not in_window()) if weekly else None)  # the site's hours hold inside a pass too
         print(f"\n{sum(len(p) for p in result['heroes'].values())} hero positions -> {path}, "
               f"refused {len(result['refused'])}: {result['refused']}", flush=True)
-        if not result["refused"] or not in_window():
+        if not (result["refused"] or result.get("pending")) or not in_window():
             break
 
 

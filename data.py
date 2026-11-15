@@ -20,6 +20,7 @@ import stratz
 
 API = "https://api.opendota.com/api"
 CACHE_FILE = paths.CACHE / "opendota.json"
+BUNDLED_FILE = paths.BUNDLED / "data" / "stats.json"
 CACHE_TTL = 7 * 24 * 3600  # OpenDota matchup stats move slowly, a week is fine
 CACHE_FORMAT = 4  # 4: weeks include the running one; older caches are downloaded again
 # (lane partners were added later without a new number, so older programs still read the feed;
@@ -28,6 +29,7 @@ RUNNING_WEEK_TTL = 6 * 3600  # the running week keeps filling up
 # the shared feed (GitHub Pages); DRAFT_HELPER_FEED overrides it (e.g. a file:// URL for tests)
 FEED_URL = "https://zurcsed.github.io/dota-draft-stats/stats.json"  # feed-repo/ on GitHub
 FEED_TTL = 2 * 3600  # the feed is rebuilt every 6 hours; checking every 2 is cheap (one ~350 KB file)
+BACKUP_FEED = "http://62.109.7.63:8080/stats.json"
 REQUEST_PAUSE = 1.1  # free tier allows 60 requests per minute
 VALVE_FILE = paths.CACHE / "valve_stats.json"  # written by valve_export.py
 VALVE_MAX_AGE = 3 * 24 * 3600  # the newest match in it may be this old, else STRATZ's numbers stay
@@ -87,6 +89,8 @@ class HeroData:
         self.valve = raw.get("valve")  # period of our own Valve numbers, if they replaced STRATZ's
         self.format = raw.get("format", 1)
         self.via_feed = bool(raw.get("downloaded_at"))
+        self.bundled = bool(raw.get("bundled"))
+        self.feed_location = raw.get("feed_location", "")
         self.downloaded_at = raw.get("downloaded_at", self.fetched_at)
         self.heroes = {int(i): h for i, h in raw["heroes"].items()}
         self.matchups = _int_keys(raw["matchups"])
@@ -112,6 +116,8 @@ class HeroData:
         weeks / cache format changed.
         Feed: downloaded 2+ hours ago, or a token has appeared (then STRATZ is used directly).
         OpenDota: older than a week, or a STRATZ token or a feed has appeared."""
+        if self.bundled:
+            return True
         if self.via_feed:
             return bool(stratz.token()) or time.time() - self.downloaded_at > FEED_TTL
         if self.source == "stratz":
@@ -208,10 +214,17 @@ def apply_valve(raw, valve):
 
 
 def load_cache():
-    try:
-        return HeroData(json.loads(CACHE_FILE.read_text(encoding="utf-8")))
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):  # a file of the wrong shape: download again
-        return None
+    for path in (CACHE_FILE, BUNDLED_FILE):
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if path == BUNDLED_FILE:
+                if raw.get("format") != CACHE_FORMAT:
+                    continue
+                raw["bundled"] = True
+            return HeroData(raw)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return None
 
 
 def _fetch_opendota_matchups(heroes, progress):
@@ -235,14 +248,35 @@ def feed_file_url(name):
     return feed_url().rsplit("/", 1)[0] + "/" + name
 
 
-def download_newer(url, path, file_format, have_at=0, check=None):
+def feed_candidates(url):
+    """Explicit custom feeds stay isolated; the default Pages feed has our server as backup."""
+    yield url
+    if url.rsplit("/", 1)[0] == FEED_URL.rsplit("/", 1)[0]:
+        yield BACKUP_FEED.rsplit("/", 1)[0] + "/" + url.rsplit("/", 1)[1]
+
+
+def download_shared(name, path, file_format, have_at=0, check=None):
+    error = None
+    for url in feed_candidates(feed_file_url(name + ".json")):
+        try:
+            return download_newer(url, path, file_format, have_at, check, strict=True)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException) as e:
+            error = e
+    raise error
+
+
+def download_newer(url, path, file_format, have_at=0, check=None, strict=False):
     """Save the JSON file at `url` to `path` when it has `file_format` and is newer ("fetched_at") than
     `have_at`; True if it did. A file of another format (a newer program's) is left alone. `check(path)`
     reads the downloaded copy back: a file it can't read (None or an error) replaces nothing."""
     request = urllib.request.Request(url, headers={"User-Agent": "dota-draft-helper", "Cache-Control": "no-cache"})
     with urllib.request.urlopen(request, timeout=120) as resp:
         raw = json.load(resp)
-    if not isinstance(raw, dict) or raw.get("format") != file_format or raw.get("fetched_at", 0) <= have_at:
+    if not isinstance(raw, dict) or raw.get("format") != file_format:
+        if strict:
+            raise ValueError("файл данных другой версии — обнови программу")
+        return False
+    if raw.get("fetched_at", 0) <= have_at:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -272,6 +306,8 @@ def _download_feed(url):
     if raw.get("format") != CACHE_FORMAT:
         raise ValueError("файл статистики другой версии — обнови программу")
     raw["downloaded_at"] = time.time()
+    raw["feed_location"] = url
+    raw.pop("bundled", None)
     return raw
 
 
@@ -279,7 +315,20 @@ def fetch(progress=None):
     """Your own STRATZ token first, then the shared feed, then OpenDota. A STRATZ or feed failure
     raises, so the previous data stays in use. Saves the cache and returns it."""
     if not stratz.token() and feed_url():
-        return _save(_download_feed(feed_url()))
+        error = None
+        for url in feed_candidates(feed_url()):
+            try:
+                raw = _download_feed(url)
+                HeroData(raw)  # validate the complete shape before touching the saved copy
+                if not raw.get("heroes") or not raw.get("matchups"):
+                    raise ValueError("пустая статистика")
+                have = load_cache()
+                if have and raw["fetched_at"] < have.fetched_at:
+                    raise ValueError("сервер вернул данные старее сохранённых")
+                return _save(raw)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException) as e:
+                error = e
+        raise error
     return _save(collect(progress))
 
 

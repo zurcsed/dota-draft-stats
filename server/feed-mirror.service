@@ -1,0 +1,13 @@
+[Unit]
+Description=Preserve feed copies outside GitHub and check publication freshness
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=collector
+WorkingDirectory=/opt/dota-collector
+ExecStart=/usr/bin/python3 /opt/dota-collector/feed_mirror.py --to /opt/dota-collector/public
+MemoryMax=100M
+CPUQuota=20%
+Nice=10
+TimeoutStartSec=5min

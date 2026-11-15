@@ -30,6 +30,7 @@ gone and `site_offsets` is only kept as zeros for the cache format 4 that old ex
 `python stratz.py` checks the token and prints a couple of numbers.
 """
 import json
+import http.client
 import os
 import time
 import urllib.error
@@ -167,7 +168,7 @@ def _post(query, retries):
             if e.code in (401, 403):
                 raise StratzError("STRATZ не принял ключ (проверь STRATZ_TOKEN)") from None
             raise StratzError(f"STRATZ ответил HTTP {e.code}") from None
-        except (urllib.error.URLError, TimeoutError) as e:  # slow answer or a network hiccup
+        except (urllib.error.URLError, TimeoutError, http.client.HTTPException, json.JSONDecodeError) as e:
             if last:
                 raise StratzError(f"STRATZ не ответил: {e}") from None
             time.sleep(5)

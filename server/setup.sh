@@ -45,8 +45,11 @@ install -m 644 "$APP/server/valve-serve.service" /etc/systemd/system/valve-serve
 install -m 644 "$APP/server/protracker-fetch.service" /etc/systemd/system/protracker-fetch.service
 install -m 644 "$APP/server/protracker-fetch.timer" /etc/systemd/system/protracker-fetch.timer
 install -m 644 "$APP/server/launch-count.service" /etc/systemd/system/launch-count.service
+install -m 644 "$APP/server/feed-mirror.service" /etc/systemd/system/feed-mirror.service
+install -m 644 "$APP/server/feed-mirror.timer" /etc/systemd/system/feed-mirror.timer
 systemctl daemon-reload
 systemctl enable --now protracker-fetch.timer  # needs no key
+systemctl enable --now feed-mirror.timer
 systemctl enable launch-count && systemctl restart launch-count  # restart: the new code after a pull
 
 if grep -q PUT_THE_KEY_HERE /etc/dota-collector.env; then

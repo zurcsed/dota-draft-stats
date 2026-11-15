@@ -1,0 +1,9 @@
+[Unit]
+Description=Check and mirror the public feed hourly
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target
