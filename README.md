@@ -10,7 +10,7 @@ Windows, один файл, установка не нужна. Что ново�
 
 ## Что умеет
 
-- **Драфт.** Сам видит выбранных героев на экране и считает, кто лучше всего играет против врагов (преимущество, как на Dotabuff) и с напарником по линии.
+- **Драфт.** Сам видит выбранных героев на экране, показывает прогноз победы и предлагает контрпики. В ручном драфте нажми номер позиции в колонке Radiant или Dire, чтобы выбрать сторону.
 - **Баны.** Читает забаненных героев с сетки выбора и отмечает их в подсказках (экран 1920×1080).
 - **Билд в игре.** Нетворс и цель для твоего ранга, предметы сильных игроков к текущей минуте, раскачка, таланты и начальный закуп.
 - **Не мешает игре.** Окно не забирает клавиатуру; показать и спрятать его — горячая клавиша (по умолчанию Insert).
@@ -32,7 +32,7 @@ Windows, один файл, установка не нужна. Что ново�
 
 ## Откуда статистика
 
-- **Драфт** — STRATZ API (рейтинговые матчи всех рангов, 4 завершённые недели и текущая), винрейты и контрпики — по публичным матчам Valve за 14 дней, которые собирает наш сервер.
+- **Драфт** — прогноз и рекомендации по публичным матчам All Pick за последние 7 дней по всем рангам. Сервер пересчитывает таблицу ежедневно. Для выбора героев по позициям и резервной статистики используется STRATZ.
 - **Билд** — предметы, нетворс и таланты сильных игроков из STRATZ; раскачка, таланты и начальный закуп из Dota Pro Tracker. Наш сервер забирает их раз в неделю ночью, а программа скачивает копию отсюда и к сайту сама не обращается.
 
 **Данные: [Dota Pro Tracker](https://dota2protracker.com/)** — раскачка, таланты и начальный закуп, по договорённости с сайтом.
@@ -44,7 +44,7 @@ Windows, один файл, установка не нужна. Что ново�
 
 | Файл | Назначение |
 | --- | --- |
-| `build_feed.py` | собирает `stats.json`, `builds.json` и `protracker.json` для GitHub Pages |
+| `build_feed.py` | собирает `stats.json`, `builds.json`, `protracker.json` и `draft_prediction.json` для GitHub Pages |
 | `data.py`, `stratz.py`, `paths.py` | загрузка и разбор статистики (общие с программой) |
 | `builds.py`, `protracker.py` | билды из STRATZ и из Dota Pro Tracker |
 | `valve_collect.py`, `valve_export.py`, `valve_stats.py` | сбор матчей Valve и расчёт статистики |
@@ -67,7 +67,7 @@ Windows, один файл, установка не нужна. Что ново�
 
 ## English
 
-Draft Helper is an overlay for Dota 2. During the draft it shows the top-5 heroes to pick and explains each one (advantage against the enemy picks, lane partner synergy); in the game it shows a build for your hero.
+Draft Helper is an overlay for Dota 2. During the draft it estimates each team's win probability, recommends five picks and explains them. Click a position number in either team column to set your side and role. In the game it shows a build for your hero.
 
 **[⬇ Download Draft Helper.exe](https://github.com/zurcsed/dota-draft-stats/releases/latest/download/Draft.Helper.exe)** — Windows, single file, no installation. Turn on "Borderless window" in Dota 2.
 
@@ -75,7 +75,7 @@ Only public statistics and Valve's official Game State Integration are used; gam
 
 **Data: [Dota Pro Tracker](https://dota2protracker.com/)** — skill orders, talents and starting items, used by agreement with the site.
 
-Statistics: STRATZ API and public Valve matches collected by our server, rebuilt every 6 hours on GitHub Pages.
+Draft estimates and recommendations use public All Pick matches from the last seven days across all ranks. Our server recalculates them daily, and GitHub Pages publishes statistics every six hours.
 
 ## License
 

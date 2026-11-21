@@ -5,6 +5,7 @@
 # user without a password, and starts three systemd services:
 #   valve-collect  collects the matches all the time and restarts itself after a crash or a reboot
 #   valve-export   (daily timer) makes valve_stats.json from the last 14 days and prunes old matches
+#   valve-draft-weekly (daily timer) makes draft_prediction.json from the last seven days
 #   valve-serve    gives the file to the feed builder at http://<server ip>:8080/valve_stats.json
 # and a nightly timer:
 #   protracker-fetch  Dota Pro Tracker's builds once a week (20:30 UTC, as agreed with the site), served
@@ -41,6 +42,8 @@ chmod 640 /etc/dota-collector.env
 install -m 644 "$APP/server/valve-collect.service" /etc/systemd/system/valve-collect.service
 install -m 644 "$APP/server/valve-export.service" /etc/systemd/system/valve-export.service
 install -m 644 "$APP/server/valve-export.timer" /etc/systemd/system/valve-export.timer
+install -m 644 "$APP/server/valve-draft-weekly.service" /etc/systemd/system/valve-draft-weekly.service
+install -m 644 "$APP/server/valve-draft-weekly.timer" /etc/systemd/system/valve-draft-weekly.timer
 install -m 644 "$APP/server/valve-serve.service" /etc/systemd/system/valve-serve.service
 install -m 644 "$APP/server/protracker-fetch.service" /etc/systemd/system/protracker-fetch.service
 install -m 644 "$APP/server/protracker-fetch.timer" /etc/systemd/system/protracker-fetch.timer
@@ -55,9 +58,9 @@ systemctl enable launch-count && systemctl restart launch-count  # restart: the 
 if grep -q PUT_THE_KEY_HERE /etc/dota-collector.env; then
     echo
     echo "Next: put your Steam key into /etc/dota-collector.env, then run:"
-    echo "    systemctl enable --now valve-collect valve-serve valve-export.timer"
+    echo "    systemctl enable --now valve-collect valve-serve valve-export.timer valve-draft-weekly.timer"
 else
-    systemctl enable --now valve-collect valve-serve valve-export.timer
+    systemctl enable --now valve-collect valve-serve valve-export.timer valve-draft-weekly.timer
     echo "Started. Look at the progress: journalctl -u valve-collect -n 20 --no-pager"
     echo "Dota Pro Tracker: next run $(systemctl show protracker-fetch.timer -p NextElapseUSecRealtime --value)"
 fi

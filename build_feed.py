@@ -22,6 +22,7 @@ from pathlib import Path
 
 import builds
 import data
+import draft_prediction
 import protracker
 import stratz
 
@@ -60,6 +61,19 @@ def _write(path, raw):
     print(f"wrote {path} ({path.stat().st_size // 1024} KB)", file=sys.stderr)
 
 
+def publish_draft_prediction(folder, get):
+    filename = draft_prediction.FILENAME
+    server_url = data.BACKUP_FEED.rsplit("/", 1)[0] + "/" + filename
+    best, newest = None, 0
+    for url in (server_url, data.feed_file_url(filename)):
+        raw = get(url)
+        model = draft_prediction.parse(raw, weekly=True)
+        if model and model.fetched_at > newest:
+            best, newest = raw, model.fetched_at
+    if best:
+        _write(folder / filename, best)
+
+
 def build_files(statistics, folder, now=None, get=None):
     """builds.json and protracker.json into `folder`: fresh ones when due and possible, else the published
     copies, so a failure here never takes the build page away from the helpers."""
@@ -82,6 +96,7 @@ def build_files(statistics, folder, now=None, get=None):
         pro = get(data.feed_file_url("protracker.json"))
     if pro and pro.get("format") == protracker.FORMAT and pro.get("heroes"):
         _write(folder / "protracker.json", dict(pro, attribution=protracker.ATTRIBUTION))
+    publish_draft_prediction(folder, get)
 
 
 def main(target):

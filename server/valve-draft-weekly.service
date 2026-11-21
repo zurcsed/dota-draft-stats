@@ -1,0 +1,13 @@
+[Unit]
+Description=Publish the rolling seven-day draft statistics from the Valve database
+
+[Service]
+Type=oneshot
+User=collector
+WorkingDirectory=/opt/dota-collector
+ExecStart=/usr/bin/python3 -u /opt/dota-collector/train_draft_prediction.py --daily --output /opt/dota-collector/public/draft_prediction.json
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=64M
+MemoryMax=128M
+TimeoutStartSec=25min
